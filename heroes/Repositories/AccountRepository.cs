@@ -56,7 +56,7 @@ namespace heroes.Repositories
         {
             var authClaims = new List<Claim>
             {          
-                new Claim(ClaimTypes.NameIdentifier, id),
+                new Claim("userId", id),
                 new Claim(JwtRegisteredClaimNames.Jti,Guid.NewGuid().ToString())
             };
             var authSignKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(_configuration["JWT:Secret"]));
@@ -69,9 +69,16 @@ namespace heroes.Repositories
                 );
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
-        public async Task GetUserByToken(string token)
+        public async Task<object?> GetUserById(string userId)
         {
-            
+            UserModel? user = await _userManager.Users.Include(u => u.Heroes).FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null)
+                return null;
+            return new
+            {
+                heroes = user.Heroes,
+                username = user.UserName
+            };
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using heroes.Data;
 using heroes.Models;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
 
 namespace heroes.Repositories
 {
@@ -11,7 +12,7 @@ namespace heroes.Repositories
         {
             _context = context;
         }
-        public async Task<HeroResponseModel> TryTrain(string userId,string heroId)
+        public async Task<HeroResponseModel> TryTrain(string userId,Guid heroId)
         {
             int heroRestTimeInMiliseconds = 86400000;
             UserModel? user = await _context.Users.Include(u => u.Heroes).FirstOrDefaultAsync(u => u.Id == userId);
@@ -22,19 +23,15 @@ namespace heroes.Repositories
                 result.Status = 401;
                 return result;
             }
-            bool isConvertingToGuidSucceeded = Guid.TryParse(heroId, out var heroIdGuid);
-            HeroModel? hero = null;
-            if (isConvertingToGuidSucceeded)
-            {
-                hero = await _context.Heroes.Include(h => h.Owner).FirstOrDefaultAsync(h => h.Id == heroIdGuid);
-            }
+            HeroModel? hero = await _context.Heroes.Include(h => h.Owner).FirstOrDefaultAsync(h => h.Id == heroId);
+            
             if (hero == null)
             {
                 result.ErrorMessage = "this hero doesn't exist";
                 result.Status = 404;
                 return result;
             }
-            if (hero.LastTrainingDate==null||hero.AmountOfTrainingsToday<5||(DateTime.Now - hero.LastTrainingDate).TotalMilliseconds > heroRestTimeInMiliseconds)
+            if (hero.AmountOfTrainingsToday<5||(DateTime.Now - hero.LastTrainingDate).TotalMilliseconds > heroRestTimeInMiliseconds)
             {
                 Train(hero);
                 result.Status = 200;
@@ -55,7 +52,7 @@ namespace heroes.Repositories
             hero.LastTrainingDate = DateTime.Now;
             _context.SaveChanges();
         }
-        public async Task<HeroResponseModel> AddHeroToUser(string userId,string heroId)
+        public async Task<HeroResponseModel> AddHeroToUser(string userId,Guid heroId)
         {
             UserModel? user=await _context.Users.Include(u=>u.Heroes).FirstOrDefaultAsync(u=>u.Id==userId);
             HeroResponseModel result = new();
@@ -65,23 +62,35 @@ namespace heroes.Repositories
                 result.Status = 401;
                 return result;
             }
-            HeroModel? hero=await _context.Heroes.FindAsync(heroId);
+            HeroModel? hero=await _context.Heroes.Include(h=>h.Owner).FirstOrDefaultAsync(h=>h.Id==heroId);
             if (hero==null)
             {
                 result.ErrorMessage ="this hero doesn't exist";
                 result.Status = 404;
                 return result;
             }
-            result.Heroes = new() { hero };
-            result.Status= 200;
-            if (!user.Heroes.Contains(hero))
+            if (hero.Owner?.Id == user.Id)
             {
-                user.Heroes.Add(hero);
-                _context.SaveChanges();
+                result.Heroes = user.Heroes.ToList();
+                result.Status = 200;
+                return result;
             }
+            if (hero.Owner != null)
+            {
+                result.ErrorMessage = "this hero already belong to other user";
+                result.Status = 400;
+                return result;
+            }
+            user.Heroes.Add(hero);
+            _context.SaveChanges();
+            result.Heroes = user.Heroes.Select((h)=>new HeroModel()
+            {
+
+            }).ToList();
+            result.Status = 200;
             return result;    
         }
-        public async Task<HeroResponseModel> RemoveHeroFromUser(string userId, string heroId)
+        public async Task<HeroResponseModel> RemoveHeroFromUser(string userId, Guid heroId)
         {
             UserModel? user = await _context.Users.Include(u => u.Heroes).FirstOrDefaultAsync(u => u.Id == userId);
             HeroResponseModel result = new();
@@ -99,11 +108,12 @@ namespace heroes.Repositories
                 return result;
             }
             bool isHeroRemovedSuccessfully=user.Heroes.Remove(hero);
+            
             if (isHeroRemovedSuccessfully) 
             {               
                 _context.SaveChanges();
             }
-            result.Heroes = new() { hero };
+            result.Heroes = user.Heroes.ToList();
             result.Status= 200;
             return result;
         }
@@ -118,12 +128,24 @@ namespace heroes.Repositories
             }
             else
             {
-                result.Heroes = await _context.Heroes.Include(h=>h.Owner).ToListAsync();
+                result.Heroes = await _context.Heroes.Include(h => h.Owner).Select((h) =>
+                    new HeroModel
+                    {
+                        Owner = h.Owner == null ? null : new UserModel { UserName = h.Owner.UserName },
+                        Id = h.Id,
+                        Name = h.Name,
+                        Description = h.Description,
+                        AmountOfTrainingsToday = h.AmountOfTrainingsToday,
+                        ImagePath = h.ImagePath,
+                        Level = h.Level,
+                        LastTrainingDate = h.LastTrainingDate
+                    }).
+                ToListAsync();
                 result.Status = 200;
             }
             return result;
         }
-        public async Task<HeroResponseModel> GetHero(string userId,string heroId)
+        public async Task<HeroResponseModel> GetHero(string userId,Guid heroId)
         {
             UserModel? user = await _context.Users.FindAsync(userId);
             HeroResponseModel result = new();
@@ -133,12 +155,9 @@ namespace heroes.Repositories
                 result.Status = 401;
                 return result;
             }
-            bool isConvertingToGuidSucceeded=Guid.TryParse(heroId, out var heroIdGuid);
-            HeroModel? hero = null;
-            if (isConvertingToGuidSucceeded)
-            {     
-                hero = await _context.Heroes.Include(h=>h.Owner).FirstOrDefaultAsync(h=>h.Id==heroIdGuid);
-            }
+         
+            HeroModel? hero = await _context.Heroes.Include(h=>h.Owner).FirstOrDefaultAsync(h=>h.Id==heroId);
+            
             if (hero == null)
             {
                 result.ErrorMessage = "this hero doesn't exist";
@@ -151,7 +170,22 @@ namespace heroes.Repositories
             }
             return result;
         }
-        public async Task<bool> CreateHero(string name, string imagePath)
+        private HeroModel GetHeroToTransfer(HeroModel hero)
+        {
+            return new HeroModel()
+            {
+                Owner = hero.Owner == null ? null : new UserModel { UserName = hero.Owner.UserName },
+                Id = hero.Id,
+                Name = hero.Name,
+                Description = hero.Description,
+                AmountOfTrainingsToday = hero.AmountOfTrainingsToday,
+                ImagePath = hero.ImagePath,
+                Level = hero.Level,
+                LastTrainingDate = hero.LastTrainingDate
+
+            };
+        }
+     /*   public async Task<bool> CreateHero(string name, string imagePath)
         {
             await _context.Heroes.AddAsync(new HeroModel
             {
@@ -162,8 +196,7 @@ namespace heroes.Repositories
                 Level = 0,
                 AmountOfTrainingsToday=0
             });
-            return _context.SaveChanges()>0;
-            
-        }
+            return _context.SaveChanges()>0; 
+        }*/
     }
 }

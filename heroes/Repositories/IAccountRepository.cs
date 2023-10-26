@@ -7,5 +7,6 @@ namespace heroes.Repositories
     {
         Task<AccountResponseModel> SignUp(SignupModel signupModel);
         Task<AccountResponseModel> SignIn(SigninModel signinModel);
+        Task<object?> GetUserById(string userId);
     }
 }

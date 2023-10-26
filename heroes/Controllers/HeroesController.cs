@@ -8,16 +8,16 @@ namespace heroes.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-   // [Authorize]
-    public class HeroController : ControllerBase
+    [Authorize]
+    public class HeroesController : ControllerBase
     {
         private readonly IHeroRepository _heroRepository;
-        public HeroController(IHeroRepository heroRepository)
+        public HeroesController(IHeroRepository heroRepository)
         {
             _heroRepository = heroRepository;
         }
-        [HttpPatch("train/{heroId}")]
-        public async Task<IActionResult> Train([FromRoute] string heroId)
+        [HttpPatch("train/{heroId:guid}")]
+        public async Task<IActionResult> Train([FromRoute] Guid heroId)
         {
             string? userId = User?.Identity?.Name;
             if (String.IsNullOrWhiteSpace(userId))
@@ -25,12 +25,12 @@ namespace heroes.Controllers
                 return Unauthorized("you didn't send a token");
             }
             HeroResponseModel res = await _heroRepository.TryTrain(userId, heroId);
-            return SendResponse(res);
+            return SendResponse(res, res => Ok(res.Heroes?[0]));
         }
-        [HttpPatch("own/{heroId}")]
-        public async Task<IActionResult> AddHeroToUser([FromRoute] string heroId)
+        [HttpPatch("own/{heroId:guid}")]
+        public async Task<IActionResult> AddHeroToUser([FromRoute] Guid heroId)
         {
-            string? userId = User?.Identity?.Name;
+            string? userId = User.Claims.ToList()[0].Value;
             if (String.IsNullOrWhiteSpace(userId))
             {
                 return Unauthorized("you didn't send a token");
@@ -38,10 +38,10 @@ namespace heroes.Controllers
             HeroResponseModel res = await _heroRepository.AddHeroToUser(userId, heroId);
             return SendResponse(res);
         }
-        [HttpPatch("unown/{heroId}")]
-        public async Task<IActionResult> RemoveHeroFromUser([FromRoute] string heroId)
+        [HttpPatch("unown/{heroId:guid}")]
+        public async Task<IActionResult> RemoveHeroFromUser([FromRoute] Guid heroId)
         {
-            string? userId = User?.Identity?.Name;
+            string? userId = User.Claims.ToList()[0].Value;
             if (String.IsNullOrWhiteSpace(userId))
             {
                 return Unauthorized("you didn't send a token");
@@ -53,7 +53,7 @@ namespace heroes.Controllers
         public async Task<IActionResult> GetAllHeroes([FromRoute] int page)
         {
             int amountOfHeroInPage = 3;
-            string? userId = User?.Identity?.Name;
+            string userId = User.Claims.ToList()[0].Value;
             if (String.IsNullOrWhiteSpace(userId))
             {
                 return Unauthorized("you didn't send a token");
@@ -68,23 +68,23 @@ namespace heroes.Controllers
                     );
             });
         }
-        [HttpGet("{heroId}")]
-        public async Task<IActionResult> GetHero([FromRoute] string heroId)
+        [HttpGet("{heroId:guid}")]
+        public async Task<IActionResult> GetHero([FromRoute] Guid heroId)
         {
-            string? userId = User?.Identity?.Name;
+            string? userId = User.Claims.ToList()[0].Value;
             if (String.IsNullOrWhiteSpace(userId))
             {
                 return Unauthorized("you didn't send a token");
             }
             HeroResponseModel res = await _heroRepository.GetHero(userId, heroId);
-            return SendResponse(res);
+            return SendResponse(res, res => Ok(res.Heroes?[0]));
         }
-        [HttpPost("")]
+     /*   [HttpPost("")]
         public async Task<IActionResult> AddHero([FromBody] AddModel add)
         {
             bool res =await _heroRepository.CreateHero(add.Name, add.ImagePath);
             return Ok(res);
-        }
+        }*/
         private IActionResult SendResponse(HeroResponseModel res, Func<HeroResponseModel,IActionResult>? getResponseForStatus200=null)
         {
             switch (res.Status)
